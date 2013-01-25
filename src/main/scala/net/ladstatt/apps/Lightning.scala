@@ -1,85 +1,97 @@
 package net.ladstatt.apps
 
+import scala.collection.JavaConversions.seqAsJavaList
+import scala.util.Random
+import javafx.animation.FadeTransition
 import javafx.application.Application
-import javafx.fxml.FXML
-import javafx.fxml.FXMLLoader
-import javafx.fxml.Initializable
-import javafx.fxml.JavaFXBuilderFactory
-import javafx.scene.Parent
-import javafx.scene.Scene
-import javafx.scene.layout.StackPane
-import javafx.stage.Stage
-import java.net.URL
-import java.util.ResourceBundle
-import javafx.scene.layout.Pane
-import javafx.scene.layout.BorderPane
+import javafx.event.ActionEvent
+import javafx.event.Event
+import javafx.event.EventHandler
 import javafx.scene.Group
-import javafx.scene.shape.Rectangle
-import javafx.scene.paint.Color
-import twitter4j.conf.ConfigurationBuilder
-import twitter4j.TwitterFactory
-import scala.collection.JavaConversions._
-import javafx.scene.control.Label
-import javafx.scene.layout.FlowPane
-import javafx.scene.shape.Line
-import javafx.scene.effect.Glow
+import javafx.scene.Scene
 import javafx.scene.effect.Bloom
 import javafx.scene.effect.GaussianBlur
-import com.sun.javafx.geom.Vec2d
-import scala.util.Random
+import javafx.scene.input.MouseEvent
+import javafx.scene.layout.BorderPane
+import javafx.scene.media.Media
+import javafx.scene.media.MediaPlayer
+import javafx.scene.paint.Color
+import javafx.scene.shape.Line
+import javafx.scene.shape.Rectangle
+import javafx.stage.Stage
+import javafx.util.Duration
+import javafx.scene.web.WebView
 
 object Lightning {
 
   def main(args: Array[String]): Unit = {
-    Application.launch(classOf[JaggedLine], args: _*)
+    Application.launch(classOf[Lightning], args: _*)
   }
 
 }
 
-case class Tweet(user: String, tweet: String)
+class Lightning extends javafx.application.Application {
 
-object Twitterant {
+  val canvasWidth = 800
+  val canvasHeight = 600
 
-  def getTweets: List[Tweet] = try {
-    // you have to provide your credentials in the twitter4j.properties file
-    val twitter = new TwitterFactory().getInstance()
-    val user = twitter.verifyCredentials()
-    val statuses = twitter.getHomeTimeline().iterator()
-    val x = for (status <- statuses) yield Tweet(status.getUser().getScreenName(), status.getText())
-    x.toList
-  } catch {
-    case te: Throwable => {
-      te.printStackTrace()
-      println("Failed to get timeline: " + te.getMessage())
-      List()
-    }
-  }
-
-  def mockTweets = List(Tweet("a user", "says some intelligent stuff"))
-}
-
-class JaggedLine extends javafx.application.Application {
-
-  val canvasWidth = 1024
-  val canvasHeight = 768
-  
-  val jaggingSections = 100
+  val jaggingSections = 80
   val jaggedFactor = 2
+  val lightningTime = 400
 
+  def mkEventHandler[E <: Event](f: E => Unit) = new EventHandler[E] { def handle(e: E) = f(e) }
+  val mediaResource = new Media(getClass.getResource("/strike.mp3").toString)
+  val catUrl = getClass.getResource("/cat.html").toString
+  var cnt = 0
+  var catCount = 20
   override def start(primaryStage: Stage): Unit = {
-    primaryStage.setTitle("Level1")
-    val root = new BorderPane()
+    primaryStage.setTitle("Lightning strikes (with easter egg)")
+    val mainGroup = new Group
+    val borderPane = new BorderPane()
     val drawingBoard = new Group()
-    val background = {
+    drawingBoard.getChildren().add({
       val b = new Rectangle(0, 0, canvasWidth, canvasHeight)
       b.setFill(Color.BLACK)
+      b.addEventHandler(MouseEvent.MOUSE_CLICKED, mkEventHandler(
+        (e: MouseEvent) => {
+          cnt = cnt + 1
+          if (cnt < catCount) {
+            new MediaPlayer(mediaResource).play
+            val startVec = Vec(canvasWidth / 2, 100)
+            val destVec = Vec(e.getX, e.getY())
+            val jaggedLines = jaggedlines(startVec, destVec, jaggingSections, Color.WHITESMOKE)
+            val duration = (Random.nextDouble * lightningTime).toInt
+            drawingBoard.getChildren.addAll(jaggedLines.map(withFade(_, duration, Random.nextDouble + 0.2)))
+          } else {
+            val browser = new WebView()
+            browser.setPrefHeight(canvasHeight)
+            browser.setPrefWidth(canvasWidth)
+            val webEngine = browser.getEngine()
+            webEngine.load(catUrl)
+            mainGroup.getChildren.clear()
+            mainGroup.getChildren().add(browser)
+          }
+        }))
       b
-    }
-    drawingBoard.getChildren().add(background)
-    drawingBoard.getChildren.addAll(jaggedlines(Vec(canvasWidth / 10, canvasHeight / 2), Vec(canvasWidth * 9 / 10, canvasHeight / 2), jaggingSections, Color.WHITESMOKE))
-    root.setCenter(drawingBoard)
-    primaryStage.setScene(new Scene(root, canvasWidth, canvasHeight))
+    })
+
+    borderPane.setCenter(drawingBoard)
+    mainGroup.getChildren().add(borderPane)
+    primaryStage.setScene(new Scene(mainGroup, canvasWidth, canvasHeight))
     primaryStage.show()
+  }
+
+  def withFade(group: Group, duration: Int, brightness: Double) = {
+    val ft = new FadeTransition(Duration.millis(duration), group)
+    ft.setFromValue(brightness / 8)
+    ft.setToValue(brightness)
+    ft.setCycleCount(4)
+    ft.setAutoReverse(true)
+    ft.setOnFinished(mkEventHandler((e: ActionEvent) => {
+      group.getChildren().clear()
+    }))
+    ft.play()
+    group
   }
 
   def jaggedlines(source: Vec, dest: Vec, count: Int, color: Color): List[Group] = {
@@ -91,13 +103,13 @@ class JaggedLine extends javafx.application.Application {
     val normal = onedir.normal
     val elongation = jaggedFactor * maxLen / count
 
-    val positions = List(source) ++ (for (i <- 1 to (count - 1)) yield source + onedir * length * i + normal * elongation * Random.nextDouble) ++ List(dest)
+    val wiggle = Random.nextInt(5).toDouble
+    val positions = List(source) ++ (for (i <- 1 to (count - 1)) yield source + onedir * length * i + normal * wiggle * elongation * Random.nextDouble) ++ List(dest)
 
     (for (List(a, b) <- positions.sliding(2)) yield mkLine(a, b, color)).toList
 
   }
 
-  // poor mans helper classes and functions
   case class Vec(x: Double, y: Double) {
     def -(that: Vec) = Vec(that.x - x, that.y - y)
     def +(that: Vec) = Vec(x + that.x, y + that.y)
@@ -114,7 +126,6 @@ class JaggedLine extends javafx.application.Application {
   }
 
   def mkLine(source: Vec, dest: Vec, color: Color): Group = {
-
     val g = new Group()
     val refline = new Line(source.x, source.y, dest.x, dest.y)
     refline.setStroke(color)
@@ -128,39 +139,6 @@ class JaggedLine extends javafx.application.Application {
     g.getChildren().addAll(refline, line)
     g
   }
-}
-
-class Lightning extends javafx.application.Application {
-
-  val canvasWidth = 1024
-  val canvasHeight = 768
-
-  override def start(primaryStage: Stage): Unit = {
-    primaryStage.setTitle("Lightning strikes")
-    val root = new BorderPane()
-    val drawingBoard = new Group()
-    val background = {
-      val b = new Rectangle(0, 0, canvasWidth, canvasHeight)
-      b.setFill(Color.BLACK)
-      b
-    }
-    val fp = new FlowPane
-    fp.getChildren.addAll(
-      for {
-        Tweet(user, tweet) <- Twitterant.mockTweets
-      } yield {
-        val l = new Label("%s : %s".format(user, tweet))
-        l.setScaleX(2)
-        l.setScaleY(2)
-        l
-      })
-
-    drawingBoard.getChildren().addAll(fp)
-    root.setCenter(drawingBoard)
-    primaryStage.setScene(new Scene(root, canvasWidth, canvasHeight))
-    primaryStage.show()
-  }
 
 }
-
 
