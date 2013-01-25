@@ -32,10 +32,10 @@ object Lightning {
 
 class Lightning extends javafx.application.Application {
 
-  val canvasWidth = 800
-  val canvasHeight = 600
+  val canvasWidth = 1024
+  val canvasHeight = 768
 
-  val jaggingSections = 80
+  val jaggingSections = 100
   val jaggedFactor = 2
   val lightningTime = 400
 
@@ -63,10 +63,10 @@ class Lightning extends javafx.application.Application {
             val duration = (Random.nextDouble * lightningTime).toInt
             drawingBoard.getChildren.addAll(jaggedLines.map(withFade(_, duration, Random.nextDouble + 0.2)))
           } else {
-            val browser = new WebView()
+            lazy val browser = new WebView()
             browser.setPrefHeight(canvasHeight)
             browser.setPrefWidth(canvasWidth)
-            val webEngine = browser.getEngine()
+            lazy val webEngine = browser.getEngine()
             webEngine.load(catUrl)
             mainGroup.getChildren.clear()
             mainGroup.getChildren().add(browser)
@@ -94,19 +94,28 @@ class Lightning extends javafx.application.Application {
     group
   }
 
-  def jaggedlines(source: Vec, dest: Vec, count: Int, color: Color): List[Group] = {
-
+  def mkPos(source: Vec, dest: Vec, count: Int, color: Color): List[Vec] = {
     val totalVec = (source - dest)
     val maxLen = totalVec.length
     val onedir = totalVec.onedir
     val length = totalVec.length / count
     val normal = onedir.normal
     val elongation = jaggedFactor * maxLen / count
-
     val wiggle = Random.nextInt(5).toDouble
-    val positions = List(source) ++ (for (i <- 1 to (count - 1)) yield source + onedir * length * i + normal * wiggle * elongation * Random.nextDouble) ++ List(dest)
+    List(source) ++ (for (i <- 1 to (count - 1)) yield source + onedir * length * i + normal * wiggle * elongation * Random.nextDouble) ++ List(dest)
+  }
 
-    (for (List(a, b) <- positions.sliding(2)) yield mkLine(a, b, color)).toList
+  def jaggedlines(source: Vec, dest: Vec, count: Int, color: Color): List[Group] = {
+    val mainPositions = mkPos(source, dest, count, color)
+    //    val mainSize = mainPositions.size
+    //    val randIdx = mainSize * Random.nextDouble.toInt
+    //    val rest = mainSize - randIdx
+
+    //    val randPt = mainPositions(randIdx)
+    //    val branchPositions = mkPos(randPt, randPt + ((dest - randPt).onedir.spin(scala.math.Pi / 8) * rest), rest, color)
+    //    val allPositions = mainPositions ++ branchPositions
+    val allPositions = mainPositions
+    (for (List(a, b) <- allPositions.sliding(2)) yield mkLine(a, b, color)).toList
 
   }
 
@@ -118,6 +127,7 @@ class Lightning extends javafx.application.Application {
     def length = scala.math.sqrt(x * x + y * y)
     def onedir = this / length
     def normal = Vec(-y, x)
+    def spin(phi: Double) = Vec(x * scala.math.cos(phi) - y * scala.math.sin(phi), x * scala.math.sin(phi) + y * scala.math.cos(phi))
   }
 
   def mkRandColor = {
