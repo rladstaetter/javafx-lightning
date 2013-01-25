@@ -3,5 +3,5 @@ to create a graphic effect which resembles a lightning.
 
 Sample by https://soundcloud.com/inofaith/lightning-strikes-close (edited)
 
-The cat is from Denis Borisovich (http://vimeo.com/user3263313)
+The cat is from Denis Borisovich.
 
