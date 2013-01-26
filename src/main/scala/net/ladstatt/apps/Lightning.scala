@@ -37,10 +37,7 @@ class Lightning extends javafx.application.Application {
   val canvasWidth = 1024
   val canvasHeight = 768
 
-  val jaggingSections = 100
-  val jaggedFactor = 2
-  val lightningTime = 400
-
+  val lightningTime = 1400
   val displacement = 200
   val curDetail = 5
 
@@ -50,7 +47,7 @@ class Lightning extends javafx.application.Application {
   var cnt = 0
   var catCount = 20
   override def start(primaryStage: Stage): Unit = {
-    primaryStage.setTitle("Lightning strikes (with easter egg)")
+    primaryStage.setTitle("Lightning Level 4: with branching")
     val mainGroup = new Group
     val borderPane = new BorderPane()
     val drawingBoard = new Group()
@@ -62,11 +59,11 @@ class Lightning extends javafx.application.Application {
           cnt = cnt + 1
           if (cnt < catCount) {
             new MediaPlayer(mediaResource).play
-            val startVec = Vec(canvasWidth / 2, 100)
-            val destVec = Vec(e.getX, e.getY())
-            val jaggedLines = jaggedlines(startVec, destVec, jaggingSections, Color.WHITESMOKE, displacement, curDetail)
+            val start = Vec(canvasWidth / 2, canvasHeight / 5)
+            val dest = Vec(e.getX, e.getY())
+            val tbolt = mkBolt(mkBranches(start, dest, displacement, curDetail, 2), mkRandColor)
             val duration = (Random.nextDouble * lightningTime).toInt
-            drawingBoard.getChildren.addAll(jaggedLines.map(withFade(_, duration, Random.nextDouble + 0.2)))
+            drawingBoard.getChildren.addAll(tbolt.map(withFade(_, duration, Random.nextDouble + 0.2)))
           } else {
             lazy val browser = new WebView()
             browser.setPrefHeight(canvasHeight)
@@ -97,9 +94,9 @@ class Lightning extends javafx.application.Application {
     group
   }
 
-  def mkMidPointReplacement(source: Vec, dest: Vec, displace: Double, curDetail: Double): List[Vec] = {
+  def mkMidPointReplacement(source: Vec, dest: Vec, displace: Double, curDetail: Double): List[(Vec, Vec)] = {
     if (displace < curDetail) {
-      List(source, dest)
+      List((source, dest))
     } else {
       val displacedCenter = source.center(dest).displaceMe(displace)
       mkMidPointReplacement(source, displacedCenter, displace / 2, curDetail) ++
@@ -107,10 +104,28 @@ class Lightning extends javafx.application.Application {
     }
   }
 
-  def jaggedlines(source: Vec, dest: Vec, count: Int, color: Color, displacement: Double, curDetail: Double): List[Group] = {
-    val positions = mkMidPointReplacement(source, dest, displacement, curDetail)
-    (for (List(a, b) <- positions.sliding(2)) yield mkLine(a, b, color)).toList
+  def mkRandomVec =
+    Vec(canvasWidth * (0.8 * Random.nextDouble + 0.2), canvasHeight * (0.8 * Random.nextDouble + 0.2))
+
+  def mkBranches(source: Vec, dest: Vec, displacement: Double, curDetail: Double, branchCnt: Int): List[(Vec, Vec)] = {
+
+    def mkPoints(source: Vec, dest: Vec, branchCnt: Int): List[(Vec, Vec)] = {
+      branchCnt match {
+        case 0 => mkMidPointReplacement(source, dest, displacement, curDetail)
+        case _ => {
+          val vecPairs = mkMidPointReplacement(source, dest, displacement, curDetail)
+          val idx = (vecPairs.size * Random.nextDouble).toInt
+          val (startPos, endPos) = vecPairs(idx)
+          vecPairs ++ mkPoints(startPos, source + (dest - source).spin(Pi / 4) * 0.3, branchCnt - 1)
+        }
+      }
+    }
+    mkPoints(source, dest, branchCnt)
   }
+
+  def mkBolt(positions: => List[(Vec, Vec)], color: Color): List[Group] =
+    (for ((a, b) <- positions) yield mkLine(a, b, color)).toList
+
 
   case class Vec(x: Double, y: Double) {
     def -(that: Vec) = Vec(that.x - x, that.y - y)
