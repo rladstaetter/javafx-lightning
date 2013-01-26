@@ -21,7 +21,9 @@ import javafx.scene.shape.Rectangle
 import javafx.stage.Stage
 import javafx.util.Duration
 import javafx.scene.web.WebView
-
+import scala.math.cos
+import scala.math.sin
+import scala.math.Pi
 object Lightning {
 
   def main(args: Array[String]): Unit = {
@@ -38,6 +40,9 @@ class Lightning extends javafx.application.Application {
   val jaggingSections = 100
   val jaggedFactor = 2
   val lightningTime = 400
+
+  val displacement = 200
+  val curDetail = 5
 
   def mkEventHandler[E <: Event](f: E => Unit) = new EventHandler[E] { def handle(e: E) = f(e) }
   val mediaResource = new Media(getClass.getResource("/strike.mp3").toString)
@@ -59,7 +64,7 @@ class Lightning extends javafx.application.Application {
             new MediaPlayer(mediaResource).play
             val startVec = Vec(canvasWidth / 2, 100)
             val destVec = Vec(e.getX, e.getY())
-            val jaggedLines = jaggedlines(startVec, destVec, jaggingSections, Color.WHITESMOKE)
+            val jaggedLines = jaggedlines(startVec, destVec, jaggingSections, Color.WHITESMOKE, displacement, curDetail)
             val duration = (Random.nextDouble * lightningTime).toInt
             drawingBoard.getChildren.addAll(jaggedLines.map(withFade(_, duration, Random.nextDouble + 0.2)))
           } else {
@@ -87,36 +92,24 @@ class Lightning extends javafx.application.Application {
     ft.setToValue(brightness)
     ft.setCycleCount(4)
     ft.setAutoReverse(true)
-    ft.setOnFinished(mkEventHandler((e: ActionEvent) => {
-      group.getChildren().clear()
-    }))
+    ft.setOnFinished(mkEventHandler((e: ActionEvent) => { group.getChildren().clear() }))
     ft.play()
     group
   }
 
-  def mkPos(source: Vec, dest: Vec, count: Int, color: Color): List[Vec] = {
-    val totalVec = (source - dest)
-    val maxLen = totalVec.length
-    val onedir = totalVec.onedir
-    val length = totalVec.length / count
-    val normal = onedir.normal
-    val elongation = jaggedFactor * maxLen / count
-    val wiggle = Random.nextInt(5).toDouble
-    List(source) ++ (for (i <- 1 to (count - 1)) yield source + onedir * length * i + normal * wiggle * elongation * Random.nextDouble) ++ List(dest)
+  def mkMidPointReplacement(source: Vec, dest: Vec, displace: Double, curDetail: Double): List[Vec] = {
+    if (displace < curDetail) {
+      List(source, dest)
+    } else {
+      val displacedCenter = source.center(dest).displaceMe(displace)
+      mkMidPointReplacement(source, displacedCenter, displace / 2, curDetail) ++
+        mkMidPointReplacement(displacedCenter, dest, displace / 2, curDetail)
+    }
   }
 
-  def jaggedlines(source: Vec, dest: Vec, count: Int, color: Color): List[Group] = {
-    val mainPositions = mkPos(source, dest, count, color)
-    //    val mainSize = mainPositions.size
-    //    val randIdx = mainSize * Random.nextDouble.toInt
-    //    val rest = mainSize - randIdx
-
-    //    val randPt = mainPositions(randIdx)
-    //    val branchPositions = mkPos(randPt, randPt + ((dest - randPt).onedir.spin(scala.math.Pi / 8) * rest), rest, color)
-    //    val allPositions = mainPositions ++ branchPositions
-    val allPositions = mainPositions
-    (for (List(a, b) <- allPositions.sliding(2)) yield mkLine(a, b, color)).toList
-
+  def jaggedlines(source: Vec, dest: Vec, count: Int, color: Color, displacement: Double, curDetail: Double): List[Group] = {
+    val positions = mkMidPointReplacement(source, dest, displacement, curDetail)
+    (for (List(a, b) <- positions.sliding(2)) yield mkLine(a, b, color)).toList
   }
 
   case class Vec(x: Double, y: Double) {
@@ -125,9 +118,11 @@ class Lightning extends javafx.application.Application {
     def *(factor: Double) = Vec(factor * x, factor * y)
     def /(l: Double) = if (l != 0) Vec(x / l, y / l) else sys.error("div.0")
     def length = scala.math.sqrt(x * x + y * y)
+    def displaceMe(f: Double) = Vec(x + (Random.nextDouble - 0.5) * f, y + (Random.nextDouble - 0.5))
     def onedir = this / length
     def normal = Vec(-y, x)
-    def spin(phi: Double) = Vec(x * scala.math.cos(phi) - y * scala.math.sin(phi), x * scala.math.sin(phi) + y * scala.math.cos(phi))
+    def center(other: Vec) = Vec((other.x + x) / 2, (other.y + y) / 2)
+    def spin(phi: Double) = Vec(x * cos(phi) - y * sin(phi), x * sin(phi) + y * cos(phi))
   }
 
   def mkRandColor = {
@@ -139,12 +134,11 @@ class Lightning extends javafx.application.Application {
     val g = new Group()
     val refline = new Line(source.x, source.y, dest.x, dest.y)
     refline.setStroke(color)
+    refline.setStrokeWidth(2)
     val line = new Line(source.x, source.y, dest.x, dest.y)
     line.setStroke(color)
     line.setStrokeWidth(4)
-    val bloom = new Bloom(1.0)
     val blur = new GaussianBlur()
-    blur.setInput(bloom)
     line.setEffect(blur)
     g.getChildren().addAll(refline, line)
     g
