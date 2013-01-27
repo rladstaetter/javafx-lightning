@@ -78,15 +78,11 @@
 			<resource>
 				<directory>src/main/resources</directory>
 				<includes>
-					<include>strike.mp3</include>
+					<include>**/*</include>
 				</includes>
-				<filtering>false</filtering>
-			</resource>
-			<resource>
-				<directory>src/main/resources</directory>
-				<includes>
-					<include>cat.html</include>
-				</includes>
+				<excludes>
+					<exclude>twitter4j.properties</exclude>
+				</excludes>
 				<filtering>false</filtering>
 			</resource>
 		</resources>
