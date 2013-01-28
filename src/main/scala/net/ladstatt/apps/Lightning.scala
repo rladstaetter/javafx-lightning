@@ -34,6 +34,8 @@ import javafx.animation.Animation
 import javafx.animation.KeyFrame
 import javafx.scene.shape.Circle
 import scala.collection.mutable.SetBuilder
+import javafx.scene.SnapshotParameters
+import javafx.scene.image.PixelReader
 
 object Lightning {
 
@@ -45,45 +47,43 @@ object Lightning {
 
 class Lightning extends javafx.application.Application {
 
+  val headline = "FX"
+  val appTitle = "JavaFX Lightning"
+
+  // example for loading a true type font
+  //val font = Font.loadFont(getClass.getResourceAsStream("/alph.ttf"), 250)
+
+  // this effect works well with some fonts, less with others. 
+  val font = Font.font("Verdana", 350)
+
   val canvasWidth = 800
   val canvasHeight = 600
 
-  val lightningTime = 1400
-  val boltWidth = 6
-  val displacement = 100
+  val lightningTime = 15400
+  val displacement = 50
   val curDetail = 5
 
-  val branchCnt = 3
   def mkEventHandler[E <: Event](f: E => Unit) = new EventHandler[E] { def handle(e: E) = f(e) }
-  val mediaResource = new Media(getClass.getResource("/strike.mp3").toString)
-  val font = Font.loadFont(getClass.getResourceAsStream("/alph.ttf"), 150)
-
-  def mouseClickHandler(group: Group) = mkEventHandler(
-    (e: MouseEvent) => {
-      new MediaPlayer(mediaResource).play
-      val start = Vec(canvasWidth / 2, canvasHeight / 5)
-      val dest = Vec(e.getX, e.getY())
-      mkFadingBolt(start, dest, boltWidth, branchCnt, Color.BLANCHEDALMOND, group)
-    })
+  var running = false
 
   def mkFadingBolt(start: Vec, dest: Vec, width: Double, branchCnt: Int, col: Color, group: Group) = {
-    val boltParts = mkBolt(mkBranches(start, dest, displacement, curDetail, branchCnt), width, col)
+    val boltParts = mkBolt(mkBranches(start, dest, displacement, branchCnt), width, col)
     val duration = (Random.nextDouble * lightningTime).toInt
     val bolt = new Group
-    bolt.getChildren.addAll(boltParts)
-    //    group.getChildren.addAll(withFade(bolt, duration, Random.nextDouble + 0.2))
-    group.getChildren.addAll(boltParts.map(withFade(_, duration, Random.nextDouble + 0.2)))
+    bolt.getChildren.addAll(boltParts.map(withFade(group, bolt, _, duration, Random.nextDouble + 0.2)))
+    group.getChildren.addAll(bolt)
   }
 
-  def mkPointsOnText(t: Node) = {
+  def mkPointsOnText(offset: Vec, pReader: PixelReader, width: Int, height: Double, chaos: Int) = {
+
     def mkRandPoint: Vec = {
-      val bounds = t.getBoundsInLocal()
-      val x = (Random.nextDouble * bounds.getWidth).toInt + bounds.getMinX
-      val y = (Random.nextDouble * bounds.getHeight).toInt + bounds.getMinY
-      if (t.contains(x, y)) Vec(x, y) else mkRandPoint
+      val x = ((Random.nextDouble * width)).toInt
+      val y = ((Random.nextDouble * height)).toInt
+      val b = pReader.getColor(x, y)
+      if (b != Color.WHITE) offset + Vec(x, y) else mkRandPoint
     }
 
-    val (src, dest, _) = (for (i <- 0 to 5) yield {
+    val (src, dest, _) = (for (i <- 0 to chaos) yield {
       val src = mkRandPoint
       val dest = mkRandPoint
       (src, dest, (src - dest).length)
@@ -92,66 +92,71 @@ class Lightning extends javafx.application.Application {
     (src, dest)
   }
 
-  def mkCircle(vec: Vec): Circle = {
-    val c = new Circle
-    c.setCenterX(vec.x)
-    c.setCenterY(vec.y)
-    c.setRadius(1)
-    c.setStroke(Color.GOLD)
-    c.setFill(Color.GOLD)
-    c
-  }
-
-  def mkTimeline(group: Group, t: Text, color : Color) = {
+  def mkTimeline(group: Group, offset: Vec, pReader: PixelReader, width: Int, height: Int, color: Color) = {
     val timeline = new Timeline
     timeline.setRate(24)
     timeline.setCycleCount(Animation.INDEFINITE)
+    var chaos = 1
     timeline.getKeyFrames().add(
-      new KeyFrame(Duration.seconds(2),
+      new KeyFrame(Duration.seconds(1),
         new EventHandler[ActionEvent]() {
           def handle(event: ActionEvent) {
-            val (start, dest) = mkPointsOnText(t)
-            mkFadingBolt(start, dest, Random.nextInt(8), Random.nextInt(2), color, group)
+            if (Random.nextDouble < 0.2) chaos = if (chaos > 40) 1 else chaos + 1
+            val (start, dest) = mkPointsOnText(offset, pReader, width, height, chaos)
+            val boltWidth = Random.nextInt(2) + 1
+            val branch = Random.nextInt(1)
+            mkFadingBolt(start, dest, boltWidth, branch, color, group)
           }
         }))
     timeline.play()
   }
 
-  override def start(primaryStage: Stage): Unit = {
-    primaryStage.setTitle("Lightning Level 5: Text")
-    val t = new Text("LIGHTNING")
+  // calculate pixelraster for a given text and font
+  def mkSnapShot(headline: String, font: Font): (PixelReader, Int, Int) = {
+    val t = new Text(headline)
     val textColor = Color.WHITESMOKE
     t.setFont(font)
-    
     t.setStroke(textColor.brighter)
     t.setFill(textColor.darker)
-    val blocal = t.getBoundsInLocal()
-    val bparent = t.getBoundsInParent()
-    t.setX((canvasWidth - blocal.getWidth()) / 2)
-    t.setY((canvasHeight - blocal.getHeight()) / 2)
+    val s = t.snapshot(new SnapshotParameters(), null)
+    (s.getPixelReader(), t.getBoundsInParent().getWidth.toInt, t.getBoundsInParent.getHeight.toInt)
+  }
+
+  def startFX(drawingBoard: Group, pReader: PixelReader, width: Int, height: Int) = mkEventHandler(
+    (e: MouseEvent) => {
+      if (!running) {
+        mkTimeline(drawingBoard, Vec((canvasWidth - width) / 2, (canvasHeight - height) / 2), pReader, width, height, Color.WHITE)
+        running = true
+      }
+    })
+
+  override def start(primaryStage: Stage): Unit = {
+    primaryStage.setTitle(appTitle)
+    val (pReader, width, height) = mkSnapShot(headline, font)
     val borderPane = new BorderPane()
     val drawingBoard = new Group()
     drawingBoard.getChildren().add({
       val b = new Rectangle(0, 0, canvasWidth, canvasHeight)
       b.setFill(Color.BLACK)
-      b.addEventHandler(MouseEvent.MOUSE_CLICKED, mouseClickHandler(drawingBoard))
+      b.addEventHandler(MouseEvent.MOUSE_CLICKED, startFX(drawingBoard, pReader, width, height))
       b
     })
-    mkTimeline(drawingBoard, t, textColor)
-    drawingBoard.getChildren().add(t)
 
     borderPane.setCenter(drawingBoard)
     primaryStage.setScene(new Scene(borderPane, canvasWidth, canvasHeight))
     primaryStage.show()
   }
 
-  def withFade(group: Group, duration: Int, brightness: Double) = {
+  def withFade(grandParent: Group, parent: Group, group: Group, duration: Int, brightness: Double) = {
     val ft = new FadeTransition(Duration.millis(duration), group)
-    ft.setFromValue(brightness / 8)
+    ft.setFromValue(0)
     ft.setToValue(brightness)
-    ft.setCycleCount(2)
-    ft.setAutoReverse(true)
-    ft.setOnFinished(mkEventHandler((e: ActionEvent) => { group.getChildren().clear() }))
+    ft.setCycleCount(1)
+    ft.setOnFinished(mkEventHandler((e: ActionEvent) => {
+      group.getChildren().clear()
+      parent.getChildren.remove(group)
+      grandParent.getChildren.remove(parent)
+    }))
     ft.play()
     group
   }
@@ -161,13 +166,13 @@ class Lightning extends javafx.application.Application {
       List((source, dest))
     } else {
       val displacedCenter = source.center(dest).displace(displace)
-//      val displacedCenter = source.center(dest)
+      //      val displacedCenter = source.center(dest)
       mkMidPointReplacement(source, displacedCenter, displace / 2, curDetail) ++
         mkMidPointReplacement(displacedCenter, dest, displace / 2, curDetail)
     }
   }
 
-  def mkBranches(origSource: Vec, origDest: Vec, displacement: Double, curDetail: Double, branchCnt: Int): List[(Vec, Vec)] = {
+  def mkBranches(origSource: Vec, origDest: Vec, displacement: Double, branchCnt: Int): List[(Vec, Vec)] = {
 
     def mkPoints(source: Vec, dest: Vec, branchCnt: Int): List[(Vec, Vec)] = {
       branchCnt match {
@@ -178,10 +183,10 @@ class Lightning extends javafx.application.Application {
           val (newStartPos, _) = listOfVecPairs(idx)
           listOfVecPairs ++
             (if (Random.nextInt(3) > 1)
-              mkBranches(newStartPos, newStartPos + (dest - newStartPos).spin(3 * Pi / 4), displacement, curDetail, branchCnt - 1)
+              mkBranches(newStartPos, newStartPos + (dest - newStartPos).spin(3 * Pi / 4), displacement, branchCnt - 1)
             else List()) ++
             (if (Random.nextInt(3) > 1)
-              mkBranches(newStartPos, newStartPos + (dest - newStartPos).spin(5 * Pi / 4), displacement, curDetail, branchCnt - 1)
+              mkBranches(newStartPos, newStartPos + (dest - newStartPos).spin(5 * Pi / 4), displacement, branchCnt - 1)
             else List())
         }
       }
@@ -204,11 +209,6 @@ class Lightning extends javafx.application.Application {
     def normal = Vec(-y, x)
     def center(other: Vec) = Vec((other.x + x) / 2, (other.y + y) / 2)
     def spin(phi: Double) = Vec((x * cos(phi)) - (y * sin(phi)), (x * sin(phi)) + (y * cos(phi)))
-  }
-
-  def mkRandColor = {
-    def randInt = (Random.nextFloat * 255).toInt
-    Color.rgb(randInt, randInt, randInt)
   }
 
   def mkLine(source: Vec, dest: Vec, width: Double, color: Color): Group = {
